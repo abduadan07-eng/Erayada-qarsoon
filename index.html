@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ciyaarta Erayada Qarsoon (Scores & Rounds)</title>
-    <script src="https://cdn.pubnub.com/sdk/javascript/pubnub.7.2.2.min.js"></script>
+    <title>Ciyaarta Erayada Qarsoon (GitHub Fixed)</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121212; color: #fff; text-align: center; padding: 15px; margin: 0; }
         .box { background: #1e1e1e; padding: 20px; border-radius: 12px; max-width: 95%; margin: 20px auto; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 1px solid #2f2f2f; box-sizing: border-box; }
@@ -16,11 +16,9 @@
         .status { color: #ffc107; font-weight: bold; margin-top: 15px; font-size: 14px; }
         .room-title { color: #007bff; font-size: 24px; font-weight: bold; }
         
-        /* Scoreboard CSS */
         .scoreboard { display: flex; justify-content: space-between; background: #2a2a2a; padding: 10px 15px; border-radius: 8px; margin-bottom: 15px; font-size: 14px; font-weight: bold; }
         .score-box { color: #28a745; }
 
-        /* Qaybta Chat-ka */
         #chat-box { background: #121212; height: 180px; overflow-y: auto; border-radius: 8px; border: 1px solid #333; padding: 10px; margin-top: 15px; text-align: left; }
         .msg { margin-bottom: 8px; font-size: 14px; padding: 6px 10px; border-radius: 6px; display: inline-block; max-width: 85%; }
         .msg.me { background: #007bff; color: white; float: right; clear: both; }
@@ -70,9 +68,10 @@
     </div>
 
     <script>
-        let pubnub;
+        let supabaseClient;
+        let channel;
         let myRoomCode = "";
-        let myPlayerId = "player_" + Math.floor(Math.random() * 1000);
+        let myPlayerId = "player_" + Math.floor(Math.random() * 10000);
         let mySecretWord = "";
         let opponentWord = "";
         let myWordSubmitted = false;
@@ -82,60 +81,56 @@
         let currentRound = 1;
         let isRoundOver = false;
 
-        // Init PubNub
-        function initPubNub(roomCode) {
-            pubnub = new PubNub({
-                publishKey: 'pub-c-9c765955-4424-4f51-b0e5-7ec5488eb7e9', // Demo keys
-                subscribeKey: 'sub-c-1123f1e1-e123-11e9-a316-02bf1c94a9bf',
-                uuid: myPlayerId
+        // Xiriirka Supabase (Kani waa furis guud oo HTTPS ah oo ammaan ah)
+        function initRealtime(roomCode) {
+            const SUPABASE_URL = "https://fccvpsgudwexbshfxtqh.supabase.co"; 
+            const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjY3Zwc2d1ZHdleGJzaGZ4dHFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTU4OTAwMDAsImV4cCI6MjAyNTg5MDAwMH0.1v7M1B1Y-3V1gX_kM3N4bH84XzVlM1I3YzlVMTI1";
+            
+            supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            
+            // Samaynta Qolka Realtime-ka
+            channel = supabaseClient.channel(roomCode, {
+                config: { broadcast: { self: false } }
             });
 
-            pubnub.subscribe({ channels: [roomCode] });
+            channel.on('broadcast', { event: 'game_event' }, (payload) => {
+                let data = payload.payload;
+                
+                if (data.type === "SUBMIT_WORD" && data.sender !== myPlayerId) {
+                    opponentWord = data.word.toLowerCase();
+                    checkGameStatus();
+                }
 
-            pubnub.addListener({
-                message: function(event) {
-                    let data = event.message;
+                if (data.type === "CHAT_MSG") {
+                    appendMessage(data.text, data.sender === myPlayerId ? 'me' : 'opponent');
+                }
+
+                if (data.type === "ROUND_WINNER") {
+                    isRoundOver = true;
+                    document.getElementById('input-area').style.display = 'none';
+                    document.getElementById('next-round-btn').style.display = 'block';
                     
-                    // 1. Markay erayada isweydaarsanayaan
-                    if (data.type === "SUBMIT_WORD" && data.sender !== myPlayerId) {
-                        opponentWord = data.word.toLowerCase();
-                        checkGameStatus();
-                    }
-
-                    // 2. Markay fariimaha caadiga ah isweydaarsanayaan
-                    if (data.type === "CHAT_MSG") {
-                        appendMessage(data.text, data.sender === myPlayerId ? 'me' : 'opponent');
-                    }
-
-                    // 3. Marka qof uu guuleysto (Score Update)
-                    if (data.type === "ROUND_WINNER") {
-                        isRoundOver = true;
-                        document.getElementById('input-area').style.display = 'none'; // Qari qoraalka
-                        document.getElementById('next-round-btn').style.display = 'block'; // Muuji badanka xiga
-                        
-                        if (data.winner === myPlayerId) {
-                            myScore++;
-                            document.getElementById('my-score').innerText = myScore;
-                            appendMessage(`🎉 Waad guuleysatay! Waxaad heshay eraygii ahaa: [${opponentWord.toUpperCase()}]`, 'system');
-                        } else {
-                            opponentScore++;
-                            document.getElementById('opponent-score').innerText = opponentScore;
-                            appendMessage(`😢 Saaxiibkaa ayaa dhibicda helay! Wuxuu gartay eraygaagii oo ahaa: [${mySecretWord.toUpperCase()}]`, 'system');
-                        }
-                    }
-
-                    // 4. Marka loo gudbayo wareegga cusub
-                    if (data.type === "RESET_ROUND") {
-                        resetRoundVariables();
+                    if (data.winner === myPlayerId) {
+                        myScore++;
+                        document.getElementById('my-score').innerText = myScore;
+                        appendMessage(`🎉 Waad guuleysatay! Waxaad heshay eraygii ahaa: [${opponentWord.toUpperCase()}]`, 'system');
+                    } else {
+                        opponentScore++;
+                        document.getElementById('opponent-score').innerText = opponentScore;
+                        appendMessage(`😢 Saaxiibkaa ayaa dhibicda helay! Wuxuu gartay eraygaagii oo ahaa: [${mySecretWord.toUpperCase()}]`, 'system');
                     }
                 }
-            });
+
+                if (data.type === "RESET_ROUND") {
+                    resetRoundVariables();
+                }
+            }).subscribe();
         }
 
         function createRoom() {
             myRoomCode = "room_" + Math.floor(1000 + Math.random() * 9000);
             showSetupScreen(myRoomCode.replace("room_", ""));
-            initPubNub(myRoomCode);
+            initRealtime(myRoomCode);
             document.getElementById('status-msg').innerText = "Qolka waa diyaar. Koodka u dir saaxiibkaa.";
         }
 
@@ -145,7 +140,7 @@
             
             myRoomCode = "room_" + code;
             showSetupScreen(code);
-            initPubNub(myRoomCode);
+            initRealtime(myRoomCode);
             document.getElementById('status-msg').innerText = "Waa ku biirtay qolka. Qor eraygaaga.";
         }
 
@@ -163,9 +158,10 @@
             myWordSubmitted = true;
             document.getElementById('status-msg').innerText = "Eraygaaga waad xaraysay! Sugaya saaxiibkaa...";
             
-            pubnub.publish({
-                channel: myRoomCode,
-                message: { type: "SUBMIT_WORD", sender: myPlayerId, word: mySecretWord }
+            channel.send({
+                type: 'broadcast',
+                event: 'game_event',
+                payload: { type: "SUBMIT_WORD", sender: myPlayerId, word: mySecretWord }
             });
 
             checkGameStatus();
@@ -187,32 +183,34 @@
             let text = inputEl.value.trim();
             if (!text) return;
 
-            // 1. U dir fariinta caadiga ah qolka dhan
-            pubnub.publish({
-                channel: myRoomCode,
-                message: { type: "CHAT_MSG", sender: myPlayerId, text: text }
+            channel.send({
+                type: 'broadcast',
+                event: 'game_event',
+                payload: { type: "CHAT_MSG", sender: myPlayerId, text: text }
             });
+            
+            appendMessage(text, 'me');
 
-            // 2. Hubi haddii qofkani uu helay eraygii saxda ahaa
             if (text.toLowerCase() === opponentWord) {
-                pubnub.publish({
-                    channel: myRoomCode,
-                    message: { type: "ROUND_WINNER", winner: myPlayerId }
+                channel.send({
+                    type: 'broadcast',
+                    event: 'game_event',
+                    payload: { type: "ROUND_WINNER", winner: myPlayerId }
                 });
             }
 
             inputEl.value = "";
         }
 
-        // Badanka Next Round marka la gujiyo
         function startNextRound() {
-            pubnub.publish({
-                channel: myRoomCode,
-                message: { type: "RESET_ROUND" }
+            channel.send({
+                type: 'broadcast',
+                event: 'game_event',
+                payload: { type: "RESET_ROUND" }
             });
+            resetRoundVariables();
         }
 
-        // Dib u habaynta xogta wareegga cusub
         function resetRoundVariables() {
             mySecretWord = "";
             opponentWord = "";
@@ -224,11 +222,8 @@
             document.getElementById('secret-word-input').value = "";
             document.getElementById('status-msg').innerText = "Qor erayga wareegga cusub.";
             
-            // Dib ugu celi bogga qarinta erayada
             document.getElementById('gameplay-screen').classList.add('hidden');
             document.getElementById('game-setup-screen').classList.remove('hidden');
-            
-            // Nadiifi chat-ka hore
             document.getElementById('chat-box').innerHTML = `<div class="msg system">Wareeggii ${currentRound}-aad ayaa bilaamay!</div>`;
         }
 
