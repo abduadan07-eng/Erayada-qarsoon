@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ciyaarta Erayada Qarsoon (GitHub Fixed)</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <title>Ciyaarta Erayada Qarsoon - Fixed V3</title>
+    <!-- Supabase Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.43.4/dist/umd/supabase.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121212; color: #fff; text-align: center; padding: 15px; margin: 0; }
         .box { background: #1e1e1e; padding: 20px; border-radius: 12px; max-width: 95%; margin: 20px auto; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 1px solid #2f2f2f; box-sizing: border-box; }
@@ -24,12 +25,14 @@
         .msg.me { background: #007bff; color: white; float: right; clear: both; }
         .msg.opponent { background: #333; color: white; float: left; clear: both; }
         .msg.system { background: #ffc107; color: black; float: none; display: block; text-align: center; margin: 5px auto; }
+        #error-log { color: #ff4d4d; font-size: 12px; margin-top: 10px; text-align: left; background: #000; padding: 5px; border-radius: 4px; display: none; }
     </style>
 </head>
 <body>
 
     <h2 style="margin-top: 20px;">Ciyaarta Erayada Qarsoon 🎮</h2>
 
+    <!-- 1. BOGGA HORE (LOBBY) -->
     <div id="lobby-screen" class="box">
         <h3>Ku Biir ama Samee Qol</h3>
         <button onclick="createRoom()">Abuur Qol Cusub (Create)</button>
@@ -38,6 +41,7 @@
         <button onclick="joinRoom()" style="background: #007bff;">Ku Biir Qolka (Join)</button>
     </div>
 
+    <!-- 2. BOGGA QARINTA ERAYADA -->
     <div id="game-setup-screen" class="box hidden">
         <h3>Qolka: <span id="current-room-id" class="room-title">----</span></h3>
         <p>Qor erayga aad rabto inaad ka qariso saaxiibkaa!</p>
@@ -46,6 +50,7 @@
         <div id="status-msg" class="status">Kula xiriiraya server-ka...</div>
     </div>
 
+    <!-- 3. BOGGA CIYAARTA -->
     <div id="gameplay-screen" class="box hidden">
         <div class="scoreboard">
             <div>Adiga: <span id="my-score" class="score-box">0</span></div>
@@ -67,11 +72,17 @@
         <button id="next-round-btn" onclick="startNextRound()" style="background: #ffc107; color: black; display: none; margin-top: 15px;">Wareegga Xiga (Next Round) ➡️</button>
     </div>
 
+    <!-- Meesha cilladaha lagu qorayo haday jiraan -->
+    <div class="box" style="margin-top: 10px; padding: 10px; background: #111;">
+        <div style="font-size: 12px; color: #666;">Nidaamka Monitor-ka: <span id="net-status" style="color: #28a745;">Online</span></div>
+        <div id="error-log"></div>
+    </div>
+
     <script>
         let supabaseClient;
         let channel;
         let myRoomCode = "";
-        let myPlayerId = "player_" + Math.floor(Math.random() * 10000);
+        let myPlayerId = "p_" + Math.floor(1000 + Math.random() * 9000);
         let mySecretWord = "";
         let opponentWord = "";
         let myWordSubmitted = false;
@@ -81,50 +92,64 @@
         let currentRound = 1;
         let isRoundOver = false;
 
-        // Xiriirka Supabase (Kani waa furis guud oo HTTPS ah oo ammaan ah)
+        function logError(err) {
+            const el = document.getElementById('error-log');
+            el.style.display = 'block';
+            el.innerText += "\n[Cillad]: " + err;
+        }
+
         function initRealtime(roomCode) {
-            const SUPABASE_URL = "https://fccvpsgudwexbshfxtqh.supabase.co"; 
-            const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjY3Zwc2d1ZHdleGJzaGZ4dHFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTU4OTAwMDAsImV4cCI6MjAyNTg5MDAwMH0.1v7M1B1Y-3V1gX_kM3N4bH84XzVlM1I3YzlVMTI1";
-            
-            supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-            
-            // Samaynta Qolka Realtime-ka
-            channel = supabaseClient.channel(roomCode, {
-                config: { broadcast: { self: false } }
-            });
-
-            channel.on('broadcast', { event: 'game_event' }, (payload) => {
-                let data = payload.payload;
+            try {
+                // Furayaal HTTPS ah oo si toos ah u furan
+                const SUPABASE_URL = "https://fccvpsgudwexbshfxtqh.supabase.co"; 
+                const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjY3Zwc2d1ZHdleGJzaGZ4dHFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTU4OTAwMDAsImV4cCI6MjAyNTg5MDAwMH0.1v7M1B1Y-3V1gX_kM3N4bH84XzVlM1I3YzlVMTI1";
                 
-                if (data.type === "SUBMIT_WORD" && data.sender !== myPlayerId) {
-                    opponentWord = data.word.toLowerCase();
-                    checkGameStatus();
-                }
+                supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+                
+                channel = supabaseClient.channel(roomCode, {
+                    config: { broadcast: { self: true } } // Naftasada u ogolaaw fariinta
+                });
 
-                if (data.type === "CHAT_MSG") {
-                    appendMessage(data.text, data.sender === myPlayerId ? 'me' : 'opponent');
-                }
-
-                if (data.type === "ROUND_WINNER") {
-                    isRoundOver = true;
-                    document.getElementById('input-area').style.display = 'none';
-                    document.getElementById('next-round-btn').style.display = 'block';
+                channel.on('broadcast', { event: 'game_event' }, (payload) => {
+                    let data = payload.payload;
                     
-                    if (data.winner === myPlayerId) {
-                        myScore++;
-                        document.getElementById('my-score').innerText = myScore;
-                        appendMessage(`🎉 Waad guuleysatay! Waxaad heshay eraygii ahaa: [${opponentWord.toUpperCase()}]`, 'system');
-                    } else {
-                        opponentScore++;
-                        document.getElementById('opponent-score').innerText = opponentScore;
-                        appendMessage(`😢 Saaxiibkaa ayaa dhibicda helay! Wuxuu gartay eraygaagii oo ahaa: [${mySecretWord.toUpperCase()}]`, 'system');
+                    if (data.type === "SUBMIT_WORD") {
+                        if (data.sender !== myPlayerId) {
+                            opponentWord = data.word.toLowerCase();
+                            checkGameStatus();
+                        }
                     }
-                }
 
-                if (data.type === "RESET_ROUND") {
-                    resetRoundVariables();
-                }
-            }).subscribe();
+                    if (data.type === "CHAT_MSG") {
+                        appendMessage(data.text, data.sender === myPlayerId ? 'me' : 'opponent');
+                    }
+
+                    if (data.type === "ROUND_WINNER") {
+                        isRoundOver = true;
+                        document.getElementById('input-area').style.display = 'none';
+                        document.getElementById('next-round-btn').style.display = 'block';
+                        
+                        if (data.winner === myPlayerId) {
+                            myScore++;
+                            document.getElementById('my-score').innerText = myScore;
+                            appendMessage(`🎉 Waad guuleysatay! Waxaad heshay eraygii ahaa: [${opponentWord.toUpperCase()}]`, 'system');
+                        } else {
+                            opponentScore++;
+                            document.getElementById('opponent-score').innerText = opponentScore;
+                            appendMessage(`😢 Saaxiibkaa ayaa dhibicda helay! Wuxuu gartay eraygaagii oo ahaa: [${mySecretWord.toUpperCase()}]`, 'system');
+                        }
+                    }
+
+                    if (data.type === "RESET_ROUND") {
+                        resetRoundVariables();
+                    }
+                }).subscribe((status) => {
+                    document.getElementById('net-status').innerText = "Ku xiran server-ka (" + status + ")";
+                });
+
+            } catch (e) {
+                logError(e.message);
+            }
         }
 
         function createRoom() {
@@ -188,8 +213,6 @@
                 event: 'game_event',
                 payload: { type: "CHAT_MSG", sender: myPlayerId, text: text }
             });
-            
-            appendMessage(text, 'me');
 
             if (text.toLowerCase() === opponentWord) {
                 channel.send({
@@ -208,7 +231,6 @@
                 event: 'game_event',
                 payload: { type: "RESET_ROUND" }
             });
-            resetRoundVariables();
         }
 
         function resetRoundVariables() {
